@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Color Canvas</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Smooth color transition for background */
+        .color-transition {
+            transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        /* Glassmorphism background card */
+        .glass-card {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        /* Click ripple animation */
+        @keyframes ripple {
+            0% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            100% {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+        .animate-ripple {
+            animation: ripple 0.6s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="overflow-hidden select-none">
+
+    <div id="colorCanvas" class="w-screen h-screen color-transition flex flex-col justify-between items-center p-6 relative cursor-pointer" style="background-color: #FFFFFF;">
+        
+        <!-- Click Ripple Effect Container -->
+        <div id="rippleContainer" class="absolute inset-0 pointer-events-none overflow-hidden z-0"></div>
+
+        <!-- Top Header Navigation -->
+        <header class="w-full max-w-4xl flex justify-between items-center z-10 opacity-80 transition-opacity hover:opacity-100">
+            <div class="flex items-center space-x-2 font-semibold tracking-wider text-sm">
+                <i class="fa-solid fa-palette text-lg"></i>
+                <span id="brandText" class="transition-colors duration-300">COLOR STUDIO</span>
+            </div>
+            <div id="shortcutHint" class="text-xs px-3 py-1.5 rounded-full border border-current opacity-70">
+                <i class="fa-solid fa-keyboard mr-1"></i> Spacebar로 색상 변경
+            </div>
+        </header>
+
+        <!-- Center Interactive Hero Box -->
+        <main class="z-10 text-center flex flex-col items-center justify-center my-auto">
+            <div id="glassCard" class="glass-card bg-white/20 border border-white/30 rounded-3xl p-8 md:p-12 shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 group">
+                
+                <!-- Subtitle / Prompt -->
+                <p id="promptText" class="text-xs md:text-sm font-semibold tracking-widest uppercase mb-3 opacity-75 transition-colors duration-300">
+                    화면을 클릭하면 색상이 변경됩니다
+                </p>
+
+                <!-- HEX Code Display -->
+                <div id="copyButton" class="cursor-pointer flex items-center justify-center space-x-3 group/btn py-2 px-4 rounded-xl transition-all hover:bg-black/5" title="클릭하여 복사">
+                    <span id="hexCode" class="font-mono text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight transition-colors duration-300">
+                        #FFFFFF
+                    </span>
+                    <i id="copyIcon" class="fa-regular fa-copy text-2xl md:text-3xl opacity-50 group-hover/btn:opacity-100 transition-opacity"></i>
+                </div>
+
+                <!-- Color RGB / HSL Info -->
+                <p id="rgbCode" class="font-mono text-xs md:text-sm mt-3 opacity-65 font-medium transition-colors duration-300">
+                    rgb(255, 255, 255)
+                </p>
+            </div>
+        </main>
+
+        <!-- Bottom Palette History -->
+        <footer class="w-full max-w-xl z-10 flex flex-col items-center space-y-3">
+            <span id="historyLabel" class="text-xs font-semibold tracking-wider opacity-60 transition-colors duration-300">
+                최근 색상 기록
+            </span>
+            <div id="historyBar" class="flex items-center space-x-2 p-2 rounded-2xl glass-card bg-white/10 border border-white/20 max-w-full overflow-x-auto no-scrollbar">
+                <!-- Color chips will be dynamically added here -->
+            </div>
+        </footer>
+
+        <!-- Toast Notification for Copy -->
+        <div id="toast" class="fixed top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50 flex items-center space-x-2">
+            <i class="fa-solid fa-check-circle text-emerald-400"></i>
+            <span>색상 코드가 클립보드에 복사되었습니다!</span>
+        </div>
+    </div>
+
+    <script>
+        /* Application State */
+        let currentColor = '#FFFFFF';
+        let colorHistory = ['#FFFFFF'];
+        const maxHistory = 8;
+
+        /* DOM Elements */
+        const canvas = document.getElementById('colorCanvas');
+        const hexDisplay = document.getElementById('hexCode');
+        const rgbDisplay = document.getElementById('rgbCode');
+        const promptText = document.getElementById('promptText');
+        const brandText = document.getElementById('brandText');
+        const historyLabel = document.getElementById('historyLabel');
+        const glassCard = document.getElementById('glassCard');
+        const historyBar = document.getElementById('historyBar');
+        const copyBtn = document.getElementById('copyButton');
+        const copyIcon = document.getElementById('copyIcon');
+        const toast = document.getElementById('toast');
+        const rippleContainer = document.getElementById('rippleContainer');
+
+        /**
+         * Generate a random hex color code
+         */
+        function getRandomHexColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        /**
+         * Convert Hex string to RGB Object
+         */
+        function hexToRgb(hex) {
+            let cleanHex = hex.replace('#', '');
+            if (cleanHex.length === 3) {
+                cleanHex = cleanHex.split('').map(c => c + c).join('');
+            }
+            const num = parseInt(cleanHex, 16);
+            return {
+                r: (num >> 16) & 255,
+                g: (num >> 8) & 255,
+                b: num & 255
+            };
+        }
+
+        /**
+         * Calculate perceived luminance to determine high-contrast text color
+         */
+        function getContrastColor(hex) {
+            const { r, g, b } = hexToRgb(hex);
+            // YIQ equation for relative luminance
+            const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+            return (yiq >= 128) ? 'dark' : 'light';
+        }
+
+        /**
+         * Apply color changes to the UI
+         */
+        function setColor(hex, addToHistory = true) {
+            currentColor = hex;
+            const rgb = hexToRgb(hex);
+            const mode = getContrastColor(hex);
+
+            // Update background color
+            canvas.style.backgroundColor = hex;
+
+            // Update texts
+            hexDisplay.textContent = hex.toUpperCase();
+            rgbDisplay.textContent = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+
+            // Adapt text colors based on contrast mode
+            if (mode === 'dark') {
+                const darkText = '#0F172A'; // Slate 900
+                canvas.style.color = darkText;
+                glassCard.style.backgroundColor = 'rgba(255, 255, 255, 0.25)';
+                glassCard.style.borderColor = 'rgba(0, 0, 0, 0.1)';
+            } else {
+                const lightText = '#F8FAFC'; // Slate 50
+                canvas.style.color = lightText;
+                glassCard.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+                glassCard.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+            }
+
+            // Manage color history
+            if (addToHistory) {
+                if (colorHistory[0] !== hex) {
+                    colorHistory.unshift(hex);
+                    if (colorHistory.length > maxHistory) {
+                        colorHistory.pop();
+                    }
+                    renderHistory();
+                }
+            }
+        }
+
+        /**
+         * Render bottom palette chips
+         */
+        function renderHistory() {
+            historyBar.innerHTML = '';
+            colorHistory.forEach((hex) => {
+                const chip = document.createElement('button');
+                chip.className = 'w-8 h-8 md:w-10 md:h-10 rounded-xl border-2 border-white/40 shadow-sm transition-transform hover:scale-125 focus:outline-none flex-shrink-0 cursor-pointer';
+                chip.style.backgroundColor = hex;
+                chip.title = hex;
+
+                chip.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent triggering canvas click
+                    setColor(hex, false);
+                });
+
+                historyBar.appendChild(chip);
+            });
+        }
+
+        /**
+         * Trigger visual click ripple effect
+         */
+        function createRipple(x, y) {
+            const ripple = document.createElement('div');
+            const mode = getContrastColor(currentColor);
+            const color = mode === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)';
+
+            ripple.className = 'absolute rounded-full pointer-events-none animate-ripple';
+            ripple.style.width = '100px';
+            ripple.style.height = '100px';
+            ripple.style.left = `${x - 50}px`;
+            ripple.style.top = `${y - 50}px`;
+            ripple.style.backgroundColor = color;
+
+            rippleContainer.appendChild(ripple);
+
+            setTimeout(() => {
+                ripple.remove();
+            }, 600);
+        }
+
+        /**
+         * Copy HEX code to clipboard safely
+         */
+        function copyToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            
+            try {
+                document.execCommand('copy');
+                showToast();
+            } catch (err) {
+                console.error('Copy failed', err);
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        }
+
+        /**
+         * Display temporary toast notification
+         */
+        function showToast() {
+            toast.classList.remove('opacity-0');
+            toast.classList.add('opacity-100');
+            
+            // Temporary icon feedback
+            copyIcon.className = 'fa-solid fa-check text-2xl md:text-3xl text-emerald-400';
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+                copyIcon.className = 'fa-regular fa-copy text-2xl md:text-3xl opacity-50 group-hover/btn:opacity-100';
+            }, 1800);
+        }
+
+        // Canvas Click Event
+        canvas.addEventListener('click', (e) => {
+            // Ignore if user clicks history bar or copy button directly
+            if (e.target.closest('#copyButton')) {
+                copyToClipboard(currentColor);
+                return;
+            }
+            if (e.target.closest('#historyBar')) {
+                return;
+            }
+
+            createRipple(e.clientX, e.clientY);
+            const nextColor = getRandomHexColor();
+            setColor(nextColor);
+        });
+
+        // Keyboard Event (Spacebar)
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                createRipple(window.innerWidth / 2, window.innerHeight / 2);
+                const nextColor = getRandomHexColor();
+                setColor(nextColor);
+            }
+        });
+
+        // Initialize with starting state
+        window.onload = () => {
+            setColor('#FFFFFF');
+        };
+    </script>
+</body>
+</html>
